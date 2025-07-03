@@ -6,4 +6,6 @@ set(CMAKE_CXX_STANDARD 20)
 add_executable(FinalProjectAgile main.cpp
         structures.h
         functions.h
-        functions.cpp)
+        functions.cpp
+        seeder.h
+        seeder.cpp)

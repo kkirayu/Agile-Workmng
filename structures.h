@@ -4,10 +4,11 @@
 #include <string>
 #include <vector>
 #include <ctime>
-#include <fstream>
+#include <fstream> 
 
 using namespace std;
 
+// Enum untuk status tugas
 enum class Status {
     NEW,
     READY,
@@ -17,12 +18,14 @@ enum class Status {
     NEED_INFO
 };
 
+// Struct untuk menyimpan tanggal
 struct Date {
     int day;
     int month;
     int year;
 };
 
+// Struct untuk histori perubahan
 struct HistoryEntry {
     string releaseVersion;
     string changeDescription;
@@ -30,11 +33,13 @@ struct HistoryEntry {
     time_t timestamp;
 };
 
+// Node untuk linked list Histori
 struct HistoryNode {
     HistoryEntry data;
     HistoryNode* next;
 };
 
+// Struct untuk tugas
 struct Task {
     string namaTugas;
     Status statusTugas;
@@ -42,14 +47,16 @@ struct Task {
     Date creationDate;
     Date closedDate;
     string assignedUsername;
-    HistoryNode* headHistory = nullptr;
+    HistoryNode* headHistory = nullptr; 
 };
 
+// Node untuk linked list Tugas
 struct TaskNode {
     Task data;
     TaskNode* next;
 };
 
+// Struct untuk proyek
 struct Project {
     string namaProyek;
     int idProyek;
@@ -57,7 +64,7 @@ struct Project {
     string company;
     string uid;
     string projectManager;
-    string version;
+    string version; 
     int nextTaskId = 1;
     TaskNode* headTugas = nullptr;
 };

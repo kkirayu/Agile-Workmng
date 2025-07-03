@@ -12,6 +12,9 @@
 void clearScreen();
 void tampilkanMainMenu();
 void tampilkanMenuUtama();
+void menuManajemenData();
+void menuTampilan();
+void menuLaporan();
 
 // Autentikasi Pengguna
 void login();
@@ -23,6 +26,10 @@ void tambahProyek();
 void tambahTugas();
 void ubahStatusTugas();
 void assignTaskToUser();
+void hapusProyek();
+void hapusTugas();
+void cariDanTampilkanProyek();
+void cariDanTampilkanTugas();
 void tampilkanSemuaProyek(bool sortByName = false);
 void tampilkanTugasDalamProyek();
 void generateReport();

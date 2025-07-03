@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "seeder.h" // <-- Tambahkan include ini
 #include <iostream>
 
 int main() {
@@ -9,13 +10,16 @@ int main() {
     adminUser->next = headUser;
     headUser = adminUser;
 
-    // Tampilkan menu utama untuk memulai interaksi pengguna
+    // Muat dummy data
+    loadDummyData();
+
+    // Tampilkan menu utama
     tampilkanMainMenu();
 
-    // Bersihkan semua memori yang dialokasikan sebelum program berakhir
+    // Bersihkan memori
     bersihkanMemori();
 
-    cout << "Terima kasih telah menggunakan program ini!\n";
+    std::cout << "Thank you for using this program!\n";
 
     return 0;
 }
