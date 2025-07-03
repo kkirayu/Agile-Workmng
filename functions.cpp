@@ -1,18 +1,59 @@
 #include "functions.h"
-#include <iostream>
 #include <vector>
 #include <algorithm>
 #include <limits>
 #include <ctime>
 #include <chrono>
+#include <iomanip>
+#include <sstream>
+#include <map>
+#include <fstream>
+#include <cstdlib>
+#include <string>
 
-// ================== Definisi Variabel Global ==================
+#ifdef _WIN32
+#include <conio.h> // Untuk _getch() di Windows
+#else
+#include <termios.h> // Untuk pengaturan terminal di Linux/macOS
+#include <unistd.h>  // Untuk STDIN_FILENO
+#endif
+
+
+// Definisi Variabel Global
 ProjectNode* headProyek = nullptr;
 UserNode* headUser = nullptr;
 User* loggedInUser = nullptr;
 int nextProjectId = 1;
 
-// ================== Implementasi Fungsi ==================
+// Konstanta Lebar Kolom (termasuk padding)
+const int ID_WIDTH = 6;
+const int NAME_WIDTH = 35;
+const int STATUS_WIDTH = 17;
+const int USER_WIDTH = 20;
+const int DATE_WIDTH = 15;
+const int REL_WIDTH = 8;
+const int CHANGE_WIDTH = 45;
+const int BY_WIDTH = 20;
+const int WHEN_WIDTH = 20;
+
+// ================== Fungsi Utilitas & Helper ==================
+
+void clearScreen() {
+#ifdef _WIN32
+    system("cls");
+#else
+    // Bekerja di Linux dan macOS
+    system("clear");
+#endif
+}
+
+void printHorizontalBorder(const vector<int>& widths, ostream& os) {
+    os << "+";
+    for (int w : widths) {
+        os << string(w - 1, '-') << "+";
+    }
+    os << endl;
+}
 
 string statusToString(Status s) {
     switch (s) {
@@ -36,35 +77,101 @@ Date getCurrentDate() {
     return {ltm->tm_mday, 1 + ltm->tm_mon, 1900 + ltm->tm_year};
 }
 
-void tampilkanTugas(const Task& t) {
-    cout << "    ID Tugas: " << t.idTugas << "\n";
-    cout << "    Nama Tugas: " << t.namaTugas << "\n";
-    cout << "    Status: " << statusToString(t.statusTugas) << "\n";
-    if (!t.assignedUsername.empty()) {
-        cout << "    Ditugaskan kepada: " << t.assignedUsername << "\n";
-    }
-    cout << "    Tanggal Dibuat: " << t.creationDate.day << "/" << t.creationDate.month << "/" << t.creationDate.year << "\n";
-    if (t.statusTugas == Status::CLOSED) {
-        cout << "    Tanggal Ditutup: " << t.closedDate.day << "/" << t.closedDate.month << "/" << t.closedDate.year << "\n";
-    }
-    cout << "    -------------------------\n";
+string dateToString(const Date& d) {
+    if (d.year == 0) return "N/A";
+    stringstream ss;
+    ss << d.day << "/" << d.month << "/" << d.year;
+    return ss.str();
 }
 
-void tampilkanProyek(const Project& p) {
-    cout << "\n--- Detail Proyek --- \n";
-    cout << "ID Proyek: " << p.idProyek << "\n";
-    cout << "Nama Proyek: " << p.namaProyek << "\n";
-    cout << "Daftar Tugas:\n";
-    TaskNode* currentTugas = p.headTugas;
-    if (currentTugas == nullptr) {
-        cout << "  [Tidak ada tugas dalam proyek ini]\n";
+string formatRelativeTime(time_t pastTimestamp) {
+    time_t now = time(0);
+    double seconds = difftime(now, pastTimestamp);
+
+    if (seconds < 60) {
+        return "just now";
+    } else if (seconds < 3600) {
+        int minutes = static_cast<int>(seconds / 60);
+        return to_string(minutes) + " minutes ago";
+    } else if (seconds < 86400) {
+        int hours = static_cast<int>(seconds / 3600);
+        return to_string(hours) + " hours ago";
     } else {
+        int days = static_cast<int>(seconds / 86400);
+        return to_string(days) + " days ago";
+    }
+}
+
+// ================== Implementasi Fungsi Inti ==================
+
+void tampilkanTugas(const Task& t, ostream& os) {
+    os << "| " << left << setw(ID_WIDTH - 2) << t.idTugas << " ";
+    os << "| " << left << setw(NAME_WIDTH - 2) << t.namaTugas << " ";
+    os << "| " << left << setw(STATUS_WIDTH - 2) << statusToString(t.statusTugas) << " ";
+    os << "| " << left << setw(USER_WIDTH - 2) << (t.assignedUsername.empty() ? "Unassigned" : t.assignedUsername) << " ";
+    os << "| " << left << setw(DATE_WIDTH - 2) << dateToString(t.creationDate) << " ";
+    os << "| " << left << setw(DATE_WIDTH - 2) << dateToString(t.closedDate) << " |" << endl;
+}
+
+void tampilkanProyek(const Project& p, ostream& os) {
+    os << "==========================================================\n";
+    os << "DETAIL PROYEK\n";
+    os << "----------------------------------------------------------\n";
+    os << left << setw(18) << "ID Proyek" << ": " << p.idProyek << "\n";
+    os << left << setw(18) << "UID" << ": " << p.uid << "\n";
+    os << left << setw(18) << "Nama Proyek" << ": " << p.namaProyek << "\n";
+    os << left << setw(18) << "Versi (Release)" << ": " << p.version << "\n";
+    os << left << setw(18) << "Deskripsi" << ": " << p.deskripsi << "\n";
+    os << left << setw(18) << "Perusahaan" << ": " << p.company << "\n";
+    os << left << setw(18) << "Project Manager" << ": " << p.projectManager << "\n";
+    os << "----------------------------------------------------------\n";
+
+    os << "DAFTAR TUGAS\n";
+    if (p.headTugas == nullptr) {
+        os << "  [Tidak ada tugas dalam proyek ini]\n\n";
+    } else {
+        vector<int> widths = {ID_WIDTH, NAME_WIDTH, STATUS_WIDTH, USER_WIDTH, DATE_WIDTH, DATE_WIDTH};
+        printHorizontalBorder(widths, os);
+        os << "| " << left << setw(ID_WIDTH - 2) << "ID" << " ";
+        os << "| " << left << setw(NAME_WIDTH - 2) << "Nama Tugas" << " ";
+        os << "| " << left << setw(STATUS_WIDTH - 2) << "Status" << " ";
+        os << "| " << left << setw(USER_WIDTH - 2) << "Ditugaskan" << " ";
+        os << "| " << left << setw(DATE_WIDTH - 2) << "Tgl Dibuat" << " ";
+        os << "| " << left << setw(DATE_WIDTH - 2) << "Tgl Ditutup" << " |" << endl;
+        printHorizontalBorder(widths, os);
+
+        TaskNode* currentTugas = p.headTugas;
         while (currentTugas != nullptr) {
-            tampilkanTugas(currentTugas->data);
+            tampilkanTugas(currentTugas->data, os);
             currentTugas = currentTugas->next;
         }
+        printHorizontalBorder(widths, os);
     }
-    cout << "-------------------------\n";
+}
+
+void tampilkanHistoriTugas(const Task& task) {
+    vector<int> widths = {REL_WIDTH, CHANGE_WIDTH, BY_WIDTH, WHEN_WIDTH};
+
+    printHorizontalBorder(widths);
+    cout << "| " << left << setw(REL_WIDTH - 2) << "Rel" << " ";
+    cout << "| " << left << setw(CHANGE_WIDTH - 2) << "Change" << " ";
+    cout << "| " << left << setw(BY_WIDTH - 2) << "By" << " ";
+    cout << "| " << left << setw(WHEN_WIDTH - 2) << "When" << " |" << endl;
+    printHorizontalBorder(widths);
+
+    if (task.headHistory == nullptr) {
+        cout << "| " << left << setw(REL_WIDTH + CHANGE_WIDTH + BY_WIDTH + WHEN_WIDTH - 4) << "[Tidak ada histori untuk tugas ini]" << " |" << endl;
+    } else {
+        HistoryNode* current = task.headHistory;
+        while (current != nullptr) {
+            cout << "| " << left << setw(REL_WIDTH - 2) << current->data.releaseVersion << " ";
+            cout << "| " << left << setw(CHANGE_WIDTH - 2) << current->data.changeDescription << " ";
+            cout << "| " << left << setw(BY_WIDTH - 2) << current->data.changedBy << " ";
+            cout << "| " << left << setw(WHEN_WIDTH - 2) << formatRelativeTime(current->data.timestamp) << " |" << endl;
+            current = current->next;
+        }
+    }
+    printHorizontalBorder(widths);
 }
 
 void tambahProyek() {
@@ -73,13 +180,30 @@ void tambahProyek() {
         cout << "\n--- Tambah Proyek Baru ---\n";
         ProjectNode* nodeBaru = new ProjectNode();
         nodeBaru->data.idProyek = nextProjectId++;
-        nodeBaru->data.headTugas = nullptr;
-        cout << "Masukkan Nama Proyek: ";
+
         clearInputBuffer();
+        cout << "Masukkan Nama Proyek: ";
         getline(cin, nodeBaru->data.namaProyek);
+
+        cout << "Masukkan Versi Proyek (misal: v0.1): ";
+        getline(cin, nodeBaru->data.version);
+
+        cout << "Masukkan UID Proyek: ";
+        getline(cin, nodeBaru->data.uid);
+
+        cout << "Masukkan Nama Perusahaan: ";
+        getline(cin, nodeBaru->data.company);
+
+        cout << "Masukkan Nama Project Manager: ";
+        getline(cin, nodeBaru->data.projectManager);
+
+        cout << "Masukkan Deskripsi Proyek: ";
+        getline(cin, nodeBaru->data.deskripsi);
+
         nodeBaru->next = headProyek;
         headProyek = nodeBaru;
-        cout << "Proyek '" << nodeBaru->data.namaProyek << "' (ID: " << nodeBaru->data.idProyek << ") berhasil ditambahkan!\n";
+
+        cout << "\nProyek '" << nodeBaru->data.namaProyek << "' berhasil ditambahkan!\n";
         cout << "\nTambah proyek lagi? (y/n): ";
         cin >> lanjut;
     } while (lanjut == 'y' || lanjut == 'Y');
@@ -97,7 +221,9 @@ void tambahTugas() {
         ProjectNode* currentProyekNode = headProyek;
         int index = 1;
         while(currentProyekNode != nullptr) {
-            cout << index++ << ". " << currentProyekNode->data.namaProyek << " (ID: " << currentProyekNode->data.idProyek << ")\n";
+            cout << left << setw(4) << to_string(index++) + "."
+                 << setw(30) << currentProyekNode->data.namaProyek
+                 << "(ID: " << currentProyekNode->data.idProyek << ")\n";
             currentProyekNode = currentProyekNode->next;
         }
         int idProyekPilihan;
@@ -106,23 +232,23 @@ void tambahTugas() {
             cout << "Pilih Proyek (masukkan ID Proyek): ";
             cin >> idProyekPilihan;
             if (cin.fail()) {
-                cout << "Input tidak valid. Masukkan angka.\n";
+                cout << "Input tidak valid.\n";
                 cin.clear(); clearInputBuffer(); continue;
             }
             proyekPilihan = cariProyekById(idProyekPilihan);
             if (proyekPilihan == nullptr) {
-                cout << "Proyek dengan ID " << idProyekPilihan << " tidak ditemukan. Coba lagi.\n";
+                cout << "Proyek tidak ditemukan.\n";
             }
         }
         TaskNode* nodeTugasBaru = new TaskNode();
         nodeTugasBaru->data.idTugas = proyekPilihan->nextTaskId++;
-        cout << "Masukkan Nama Tugas untuk Proyek '" << proyekPilihan->namaProyek << "': ";
+        cout << "Masukkan Nama Tugas: ";
         clearInputBuffer();
         getline(cin, nodeTugasBaru->data.namaTugas);
         cout << "Pilih Status Tugas (1. New, 2. Ready, 3. On Progress, 4. RFT, 5. Closed, 6. Need Info): ";
         int pilihanStatus;
         while (!(cin >> pilihanStatus) || pilihanStatus < 1 || pilihanStatus > 6) {
-            cout << "Pilihan tidak valid. Masukkan angka antara 1 dan 6.\n";
+            cout << "Pilihan tidak valid.\n";
             cin.clear(); clearInputBuffer();
         }
         switch (pilihanStatus) {
@@ -134,90 +260,27 @@ void tambahTugas() {
             case 6: nodeTugasBaru->data.statusTugas = Status::NEED_INFO; break;
         }
         nodeTugasBaru->data.creationDate = getCurrentDate();
-        nodeTugasBaru->data.closedDate = {0, 0, 0};
-        nodeTugasBaru->data.assignedUsername = ""; // Inisialisasi tugas sebagai belum ditugaskan
         nodeTugasBaru->next = proyekPilihan->headTugas;
         proyekPilihan->headTugas = nodeTugasBaru;
-        cout << "Tugas '" << nodeTugasBaru->data.namaTugas << "' berhasil ditambahkan ke proyek '" << proyekPilihan->namaProyek << "'!\n";
+
+        HistoryNode* historyNode = new HistoryNode();
+        historyNode->data.releaseVersion = proyekPilihan->version;
+        historyNode->data.changeDescription = "Tugas dibuat";
+        historyNode->data.changedBy = loggedInUser->username;
+        historyNode->data.timestamp = time(0);
+        historyNode->next = nodeTugasBaru->data.headHistory;
+        nodeTugasBaru->data.headHistory = historyNode;
+
+        cout << "Tugas '" << nodeTugasBaru->data.namaTugas << "' berhasil ditambahkan!\n";
         cout << "\nTambah tugas lagi? (y/n): ";
         cin >> lanjut;
     } while (lanjut == 'y' || lanjut == 'Y');
 }
 
-void assignTaskToUser() {
-    cout << "\n--- Tugaskan Tugas ke Pengguna ---\n";
-    vector<User> assignableUsers;
-    UserNode* currentUserNode = headUser;
-    while(currentUserNode != nullptr) {
-        if (currentUserNode->data.username != "admin") {
-            assignableUsers.push_back(currentUserNode->data);
-        }
-        currentUserNode = currentUserNode->next;
-    }
-    if (assignableUsers.empty()) {
-        cout << "Tidak ada pengguna yang tersedia untuk ditugaskan.\n";
-        return;
-    }
-    cout << "Daftar Pengguna Tersedia:\n";
-    for (size_t i = 0; i < assignableUsers.size(); ++i) {
-        cout << i + 1 << ". " << assignableUsers[i].username << "\n";
-    }
-    int userChoice;
-    cout << "Pilih Pengguna (masukkan nomor): ";
-    cin >> userChoice;
-    if (cin.fail() || userChoice < 1 || userChoice > assignableUsers.size()) {
-        cout << "Pilihan tidak valid.\n"; cin.clear(); clearInputBuffer(); return;
-    }
-    User chosenUser = assignableUsers[userChoice - 1];
-    if (headProyek == nullptr) { cout << "Belum ada proyek.\n"; return; }
-    cout << "\nDaftar Proyek yang Tersedia:\n";
-    ProjectNode* currentProyekNode = headProyek;
-    int index = 1;
-    while(currentProyekNode != nullptr) {
-        cout << index++ << ". " << currentProyekNode->data.namaProyek << " (ID: " << currentProyekNode->data.idProyek << ")\n";
-        currentProyekNode = currentProyekNode->next;
-    }
-    int idProyekPilihan;
-    Project* proyekPilihan = nullptr;
-    cout << "Pilih Proyek (masukkan ID Proyek): ";
-    cin >> idProyekPilihan;
-    if (cin.fail()) { cin.clear(); clearInputBuffer(); cout << "Input ID tidak valid.\n"; return; }
-    proyekPilihan = cariProyekById(idProyekPilihan);
-    if (proyekPilihan == nullptr) { cout << "Proyek tidak ditemukan.\n"; return; }
-    vector<Task*> unassignedTasks;
-    TaskNode* currentTugasNode = proyekPilihan->headTugas;
-    while(currentTugasNode != nullptr) {
-        if (currentTugasNode->data.assignedUsername.empty()) {
-            unassignedTasks.push_back(&currentTugasNode->data);
-        }
-        currentTugasNode = currentTugasNode->next;
-    }
-    if (unassignedTasks.empty()) {
-        cout << "Tidak ada tugas yang belum ditugaskan di proyek ini.\n";
-        return;
-    }
-    cout << "\nDaftar Tugas yang Belum Ditugaskan:\n";
-    for (size_t i = 0; i < unassignedTasks.size(); ++i) {
-        cout << i + 1 << ". " << unassignedTasks[i]->namaTugas << " (ID: " << unassignedTasks[i]->idTugas << ")\n";
-    }
-    int taskChoice;
-    cout << "Pilih Tugas yang akan ditugaskan (masukkan nomor): ";
-    cin >> taskChoice;
-    if (cin.fail() || taskChoice < 1 || taskChoice > unassignedTasks.size()) {
-        cout << "Pilihan tidak valid.\n"; cin.clear(); clearInputBuffer(); return;
-    }
-    Task* chosenTask = unassignedTasks[taskChoice - 1];
-    chosenTask->assignedUsername = chosenUser.username;
-    cout << "\nBerhasil! Tugas '" << chosenTask->namaTugas << "' telah ditugaskan kepada pengguna '" << chosenUser.username << "'.\n";
-}
-
 void ubahStatusTugas() {
-    if (headProyek == nullptr) {
-        cout << "Belum ada proyek.\n";
-        return;
-    }
+    if (headProyek == nullptr) { cout << "Belum ada proyek.\n"; return; }
+
     cout << "\n--- Ubah Status Tugas ---\n";
-    cout << "Daftar Proyek yang Tersedia:\n";
     ProjectNode* currentProyekNode = headProyek;
     while(currentProyekNode != nullptr) {
         cout << "- " << currentProyekNode->data.namaProyek << " (ID: " << currentProyekNode->data.idProyek << ")\n";
@@ -232,17 +295,19 @@ void ubahStatusTugas() {
         proyekPilihan = cariProyekById(idProyekPilihan);
         if (proyekPilihan == nullptr) cout << "ID Proyek tidak valid.\n";
     }
+
     if (proyekPilihan->headTugas == nullptr) {
-        cout << "Proyek '" << proyekPilihan->namaProyek << "' belum memiliki tugas.\n";
+        cout << "Proyek ini belum memiliki tugas.\n";
         return;
     }
+
     cout << "\nDaftar Tugas dalam Proyek '" << proyekPilihan->namaProyek << "':\n";
     TaskNode* currentTugasNode = proyekPilihan->headTugas;
     while(currentTugasNode != nullptr) {
-        cout << "  - " << currentTugasNode->data.namaTugas << " (ID: " << currentTugasNode->data.idTugas << ")"
-             << " - Status: " << statusToString(currentTugasNode->data.statusTugas) << "\n";
+         cout << "  - " << currentTugasNode->data.namaTugas << " (ID: " << currentTugasNode->data.idTugas << ")\n";
         currentTugasNode = currentTugasNode->next;
     }
+
     int idTugasPilihan;
     Task* tugasPilihan = nullptr;
     auto cariTugasByIdLambda = [&](int id) -> Task* {
@@ -260,11 +325,13 @@ void ubahStatusTugas() {
         tugasPilihan = cariTugasByIdLambda(idTugasPilihan);
         if (tugasPilihan == nullptr) cout << "ID Tugas tidak valid.\n";
     }
-    cout << "\nPilih Status Baru untuk Tugas '" << tugasPilihan->namaTugas << "' (1-6): ";
+
+    string statusLamaStr = statusToString(tugasPilihan->statusTugas);
+
+    cout << "\nPilih Status Baru (1. New, 2. Ready, 3. On Progress, 4. RFT, 5. Closed, 6. Need Info): ";
     int pilihanStatus;
     while (!(cin >> pilihanStatus) || pilihanStatus < 1 || pilihanStatus > 6) {
-        cout << "Pilihan tidak valid.\n";
-        cin.clear(); clearInputBuffer();
+        cout << "Pilihan tidak valid.\n"; cin.clear(); clearInputBuffer();
     }
     Status statusBaru;
     switch (pilihanStatus) {
@@ -275,13 +342,168 @@ void ubahStatusTugas() {
         case 5: statusBaru = Status::CLOSED; break;
         case 6: statusBaru = Status::NEED_INFO; break;
     }
-    if (statusBaru == Status::CLOSED && tugasPilihan->statusTugas != Status::CLOSED) {
+
+    tugasPilihan->statusTugas = statusBaru;
+
+    if (statusBaru == Status::CLOSED && statusLamaStr != "Closed") {
         tugasPilihan->closedDate = getCurrentDate();
-    } else if (statusBaru != Status::CLOSED && tugasPilihan->statusTugas == Status::CLOSED) {
+    } else if (statusBaru != Status::CLOSED && statusLamaStr == "Closed") {
         tugasPilihan->closedDate = {0, 0, 0};
     }
-    tugasPilihan->statusTugas = statusBaru;
-    cout << "Status tugas '" << tugasPilihan->namaTugas << "' berhasil diubah menjadi '" << statusToString(statusBaru) << "'!\n";
+
+    HistoryNode* historyNode = new HistoryNode();
+    historyNode->data.releaseVersion = proyekPilihan->version;
+    historyNode->data.changeDescription = "Status: " + statusLamaStr + " -> " + statusToString(statusBaru);
+    historyNode->data.changedBy = loggedInUser->username;
+    historyNode->data.timestamp = time(0);
+
+    historyNode->next = tugasPilihan->headHistory;
+    tugasPilihan->headHistory = historyNode;
+
+    cout << "Status tugas berhasil diubah dan histori dicatat!\n";
+}
+
+void assignTaskToUser() {
+    if (headProyek == nullptr) { cout << "Belum ada proyek.\n"; return; }
+
+    cout << "\n--- Tugaskan Tugas ke Pengguna ---\n";
+    vector<User> assignableUsers;
+    UserNode* currentUserNode = headUser;
+    while(currentUserNode != nullptr) {
+        if (currentUserNode->data.username != "admin") {
+            assignableUsers.push_back(currentUserNode->data);
+        }
+        currentUserNode = currentUserNode->next;
+    }
+    if (assignableUsers.empty()) {
+        cout << "Tidak ada pengguna untuk ditugaskan.\n";
+        return;
+    }
+    cout << "Daftar Pengguna Tersedia:\n";
+    for (size_t i = 0; i < assignableUsers.size(); ++i) {
+        cout << left << setw(4) << to_string(i + 1) + "." << assignableUsers[i].username << "\n";
+    }
+    int userChoice;
+    cout << "Pilih Pengguna (masukkan nomor): ";
+    cin >> userChoice;
+    if (cin.fail() || userChoice < 1 || userChoice > assignableUsers.size()) {
+        cout << "Pilihan tidak valid.\n"; cin.clear(); clearInputBuffer(); return;
+    }
+    User chosenUser = assignableUsers[userChoice - 1];
+
+    cout << "\nDaftar Proyek yang Tersedia:\n";
+    ProjectNode* currentProyekNode = headProyek;
+    while(currentProyekNode != nullptr) {
+        cout << "- " << currentProyekNode->data.namaProyek << " (ID: " << currentProyekNode->data.idProyek << ")\n";
+        currentProyekNode = currentProyekNode->next;
+    }
+    int idProyekPilihan;
+    Project* proyekPilihan = nullptr;
+    cout << "Pilih Proyek (masukkan ID Proyek): ";
+    cin >> idProyekPilihan;
+    if (cin.fail()) { cin.clear(); clearInputBuffer(); cout << "Input tidak valid.\n"; return; }
+    proyekPilihan = cariProyekById(idProyekPilihan);
+    if (proyekPilihan == nullptr) { cout << "Proyek tidak ditemukan.\n"; return; }
+
+    vector<Task*> unassignedTasks;
+    TaskNode* currentTugasNode = proyekPilihan->headTugas;
+    while(currentTugasNode != nullptr) {
+        if (currentTugasNode->data.assignedUsername.empty()) {
+            unassignedTasks.push_back(&currentTugasNode->data);
+        }
+        currentTugasNode = currentTugasNode->next;
+    }
+    if (unassignedTasks.empty()) {
+        cout << "Tidak ada tugas yang belum ditugaskan di proyek ini.\n";
+        return;
+    }
+    cout << "\nDaftar Tugas yang Belum Ditugaskan:\n";
+    for (size_t i = 0; i < unassignedTasks.size(); ++i) {
+        cout << "  - " << unassignedTasks[i]->namaTugas << " (ID: " << unassignedTasks[i]->idTugas << ")\n";
+    }
+    int taskChoice;
+    Task* chosenTask = nullptr;
+    while(chosenTask == nullptr) {
+        cout << "Pilih Tugas yang akan ditugaskan (masukkan ID Tugas): ";
+        cin >> taskChoice;
+        if(cin.fail()) { cin.clear(); clearInputBuffer(); continue; }
+
+        for(Task* t : unassignedTasks) {
+            if (t->idTugas == taskChoice) {
+                chosenTask = t;
+                break;
+            }
+        }
+        if(chosenTask == nullptr) cout << "ID Tugas tidak ditemukan di daftar.\n";
+    }
+
+    chosenTask->assignedUsername = chosenUser.username;
+
+    HistoryNode* historyNode = new HistoryNode();
+    historyNode->data.releaseVersion = proyekPilihan->version;
+    historyNode->data.changeDescription = "Ditugaskan ke: " + chosenUser.username;
+    historyNode->data.changedBy = loggedInUser->username;
+    historyNode->data.timestamp = time(0);
+    historyNode->next = chosenTask->headHistory;
+    chosenTask->headHistory = historyNode;
+
+    cout << "\nBerhasil! Tugas '" << chosenTask->namaTugas << "' telah ditugaskan.\n";
+}
+
+void menuLihatHistori() {
+    if (headProyek == nullptr) {
+        cout << "Belum ada proyek.\n";
+        return;
+    }
+
+    cout << "\n--- Lihat Histori Tugas ---\n";
+    ProjectNode* currentProyekNode = headProyek;
+    while(currentProyekNode != nullptr) {
+        cout << "- " << currentProyekNode->data.namaProyek << " (ID: " << currentProyekNode->data.idProyek << ")\n";
+        currentProyekNode = currentProyekNode->next;
+    }
+    int idProyekPilihan;
+    Project* proyekPilihan = nullptr;
+    while (proyekPilihan == nullptr) {
+        cout << "Pilih Proyek (masukkan ID Proyek): ";
+        cin >> idProyekPilihan;
+        if (cin.fail()) { cin.clear(); clearInputBuffer(); continue; }
+        proyekPilihan = cariProyekById(idProyekPilihan);
+        if (proyekPilihan == nullptr) cout << "ID Proyek tidak valid.\n";
+    }
+
+    if (proyekPilihan->headTugas == nullptr) {
+        cout << "Proyek ini tidak memiliki tugas.\n";
+        return;
+    }
+
+    cout << "\nDaftar Tugas dalam Proyek '" << proyekPilihan->namaProyek << "':\n";
+    TaskNode* currentTugasNode = proyekPilihan->headTugas;
+    while(currentTugasNode != nullptr) {
+        cout << "  - " << currentTugasNode->data.namaTugas << " (ID: " << currentTugasNode->data.idTugas << ")\n";
+        currentTugasNode = currentTugasNode->next;
+    }
+
+    int idTugasPilihan;
+    Task* tugasPilihan = nullptr;
+    auto cariTugasByIdLambda = [&](int id) -> Task* {
+        TaskNode* current = proyekPilihan->headTugas;
+        while(current != nullptr) {
+            if (current->data.idTugas == id) return &current->data;
+            current = current->next;
+        }
+        return nullptr;
+    };
+    while(tugasPilihan == nullptr) {
+        cout << "Pilih Tugas yang akan dilihat historinya (masukkan ID Tugas): ";
+        cin >> idTugasPilihan;
+        if (cin.fail()) { cin.clear(); clearInputBuffer(); continue; }
+        tugasPilihan = cariTugasByIdLambda(idTugasPilihan);
+        if (tugasPilihan == nullptr) cout << "ID Tugas tidak valid.\n";
+    }
+
+    cout << "\n--- Histori untuk Tugas: " << tugasPilihan->namaTugas << " ---\n";
+    tampilkanHistoriTugas(*tugasPilihan);
 }
 
 bool bandingkanNamaProyek(const Project& a, const Project& b) { return a.namaProyek < b.namaProyek; }
@@ -302,10 +524,10 @@ void tampilkanSemuaProyek(bool sortByName) {
     }
     if (sortByName) {
         sort(tempDaftarProyek.begin(), tempDaftarProyek.end(), bandingkanNamaProyek);
-        cout << "\n--- Daftar Semua Proyek (Diurutkan Berdasarkan Nama) ---\n";
+        cout << "\n--- Daftar Semua Proyek (Diurutkan Berdasarkan Nama) ---\n\n";
     } else {
         reverse(tempDaftarProyek.begin(), tempDaftarProyek.end());
-        cout << "\n--- Daftar Semua Proyek (Berdasarkan ID) ---\n";
+        cout << "\n--- Daftar Semua Proyek (Berdasarkan ID) ---\n\n";
     }
     for (const auto& proyek : tempDaftarProyek) {
         tampilkanProyek(proyek);
@@ -318,7 +540,7 @@ void tampilkanTugasDalamProyek() {
         return;
     }
     cout << "\n--- Tampilkan Tugas dalam Proyek ---\n";
-    cout << "Daftar Proyek yang Tersedia:\n";
+    cout << "Daftar Proyek:\n";
     ProjectNode* currentProyekNode = headProyek;
     while(currentProyekNode != nullptr) {
         cout << "- " << currentProyekNode->data.namaProyek << " (ID: " << currentProyekNode->data.idProyek << ")\n";
@@ -351,10 +573,22 @@ void tampilkanTugasDalamProyek() {
         case 3: sort(tempDaftarTugas.begin(), tempDaftarTugas.end(), bandingkanStatusTugas); break;
         default: sort(tempDaftarTugas.begin(), tempDaftarTugas.end(), bandingkanIdTugas); break;
     }
+
     cout << "\n--- Tugas dalam Proyek: " << proyekPilihan->namaProyek << " ---\n";
+    vector<int> widths = {ID_WIDTH, NAME_WIDTH, STATUS_WIDTH, USER_WIDTH, DATE_WIDTH, DATE_WIDTH};
+    printHorizontalBorder(widths);
+    cout << "| " << left << setw(ID_WIDTH - 2) << "ID" << " ";
+    cout << "| " << left << setw(NAME_WIDTH - 2) << "Nama Tugas" << " ";
+    cout << "| " << left << setw(STATUS_WIDTH - 2) << "Status" << " ";
+    cout << "| " << left << setw(USER_WIDTH - 2) << "Ditugaskan" << " ";
+    cout << "| " << left << setw(DATE_WIDTH - 2) << "Tgl Dibuat" << " ";
+    cout << "| " << left << setw(DATE_WIDTH - 2) << "Tgl Ditutup" << " |" << endl;
+    printHorizontalBorder(widths);
+
     for (const auto& tugas : tempDaftarTugas) {
         tampilkanTugas(tugas);
     }
+    printHorizontalBorder(widths);
 }
 
 void generateReport() {
@@ -367,7 +601,7 @@ void generateReport() {
     int pilihanReport;
     cin >> pilihanReport;
     if (cin.fail() || (pilihanReport != 1 && pilihanReport != 2)) {
-        cout << "Input tidak valid. Pilih 1 atau 2.\n";
+        cout << "Input tidak valid.\n";
         cin.clear(); clearInputBuffer(); return;
     }
     Date today = getCurrentDate();
@@ -424,12 +658,187 @@ void generateReport() {
         }
         currentProyek = currentProyek->next;
     }
-    cout << "\n--- Ringkasan Laporan ---\n";
-    cout << "Total Tugas Baru: " << newTasks << "\n";
-    cout << "Total Tugas Sedang Dikerjakan (On Progress): " << onProgressTasks << "\n";
-    cout << "Total Tugas Selesai (Closed): " << closedTasks << "\n";
-    cout << "-------------------------\n";
+
+    cout << "\n--- Ringkasan Laporan " << (pilihanReport == 1 ? "Mingguan" : "Bulanan") << " ---\n";
+    vector<int> widths = {35, 10};
+    printHorizontalBorder(widths);
+    cout << "| " << left << setw(widths[0]-2) << "Kategori" << "| " << setw(widths[1]-2) << "Jumlah" << " |" << endl;
+    printHorizontalBorder(widths);
+    cout << "| " << left << setw(widths[0]-2) << "Total Tugas Baru" << "| " << setw(widths[1]-2) << newTasks << " |" << endl;
+    cout << "| " << left << setw(widths[0]-2) << "Total Tugas Sedang Dikerjakan" << "| " << setw(widths[1]-2) << onProgressTasks << " |" << endl;
+    cout << "| " << left << setw(widths[0]-2) << "Total Tugas Selesai" << "| " << setw(widths[1]-2) << closedTasks << " |" << endl;
+    printHorizontalBorder(widths);
 }
+
+void tampilkanMatriksStatusProyek() {
+    cout << "\n--- Laporan Matriks: Status Tugas per Proyek ---\n";
+    if (headProyek == nullptr) {
+        cout << "Belum ada proyek untuk ditampilkan.\n";
+        return;
+    }
+
+    map<int, map<Status, int>> projectStatusCounts;
+    map<int, string> projectNames;
+
+    ProjectNode* currentProyek = headProyek;
+    while (currentProyek != nullptr) {
+        projectNames[currentProyek->data.idProyek] = currentProyek->data.namaProyek;
+        projectStatusCounts[currentProyek->data.idProyek] = {
+            {Status::NEW, 0}, {Status::READY, 0}, {Status::ON_PROGRESS, 0},
+            {Status::RFT, 0}, {Status::CLOSED, 0}, {Status::NEED_INFO, 0}
+        };
+
+        TaskNode* currentTugas = currentProyek->data.headTugas;
+        while (currentTugas != nullptr) {
+            projectStatusCounts[currentProyek->data.idProyek][currentTugas->data.statusTugas]++;
+            currentTugas = currentTugas->next;
+        }
+        currentProyek = currentProyek->next;
+    }
+
+    const int PROYEK_COL_WIDTH = 25;
+    const int STATUS_COL_WIDTH = 13;
+    vector<Status> statusOrder = {Status::NEW, Status::READY, Status::ON_PROGRESS, Status::RFT, Status::NEED_INFO, Status::CLOSED};
+
+    vector<int> widths;
+    widths.push_back(PROYEK_COL_WIDTH);
+    for(size_t i = 0; i < statusOrder.size(); ++i) widths.push_back(STATUS_COL_WIDTH);
+
+    printHorizontalBorder(widths);
+    cout << "| " << left << setw(PROYEK_COL_WIDTH - 2) << "Nama Proyek" << " ";
+    for (const auto& status : statusOrder) {
+        cout << "| " << setw(STATUS_COL_WIDTH - 2) << statusToString(status) << " ";
+    }
+    cout << "|" << endl;
+    printHorizontalBorder(widths);
+
+    for (const auto& pair : projectNames) {
+        int projectId = pair.first;
+        string projectName = pair.second;
+        cout << "| " << left << setw(PROYEK_COL_WIDTH - 2) << projectName << " ";
+        for (const auto& status : statusOrder) {
+            cout << "| " << setw(STATUS_COL_WIDTH - 2) << projectStatusCounts[projectId][status] << " ";
+        }
+        cout << "|" << endl;
+    }
+    printHorizontalBorder(widths);
+}
+
+void printUserAchievements() {
+    if (loggedInUser == nullptr) {
+        cout << "Anda harus login untuk mencetak pencapaian.\n";
+        return;
+    }
+
+    cout << "\n--- Cetak Pencapaian Pengguna ---\n";
+    string filename;
+    cout << "Masukkan nama file untuk menyimpan pencapaian (contoh: pencapaian_saya.txt): ";
+    clearInputBuffer();
+    getline(cin, filename);
+
+    ofstream outFile(filename);
+    if (!outFile) {
+        cerr << "Error: Gagal membuka file untuk ditulis.\n";
+        return;
+    }
+
+    Date today = getCurrentDate();
+    outFile << "Laporan Pencapaian untuk: " << loggedInUser->username << "\n";
+    outFile << "Tanggal Laporan: " << dateToString(today) << "\n";
+    outFile << "==========================================================\n\n";
+
+    int totalTasks = 0;
+    int closedTasks = 0;
+
+    ProjectNode* currentProyek = headProyek;
+    while (currentProyek != nullptr) {
+        Project userProject = currentProyek->data;
+        userProject.headTugas = nullptr;
+
+        TaskNode* originalTugas = currentProyek->data.headTugas;
+        TaskNode* tail = nullptr;
+        bool hasUserTasks = false;
+
+        while(originalTugas != nullptr) {
+            if (originalTugas->data.assignedUsername == loggedInUser->username) {
+                hasUserTasks = true;
+                totalTasks++;
+                if (originalTugas->data.statusTugas == Status::CLOSED) {
+                    closedTasks++;
+                }
+                TaskNode* newTaskNode = new TaskNode{originalTugas->data, nullptr};
+                if (userProject.headTugas == nullptr) {
+                    userProject.headTugas = newTaskNode;
+                    tail = newTaskNode;
+                } else {
+                    tail->next = newTaskNode;
+                    tail = newTaskNode;
+                }
+            }
+            originalTugas = originalTugas->next;
+        }
+
+        if (hasUserTasks) {
+            tampilkanProyek(userProject, outFile);
+            bersihkanMemoriTugas(userProject.headTugas);
+        }
+        currentProyek = currentProyek->next;
+    }
+
+    outFile << "\n--- Ringkasan ---\n";
+    outFile << "Total tugas yang ditugaskan: " << totalTasks << "\n";
+    outFile << "Tugas yang diselesaikan: " << closedTasks << "\n";
+    if (totalTasks > 0) {
+        double completionRate = (static_cast<double>(closedTasks) / totalTasks) * 100.0;
+        outFile << "Tingkat Penyelesaian: " << fixed << setprecision(2) << completionRate << "%\n";
+    }
+
+    outFile.close();
+    cout << "Pencapaian berhasil dicetak ke " << filename << "\n";
+}
+
+string getMaskedPassword() {
+    string password = "";
+    char ch;
+
+#ifdef _WIN32
+    while ((ch = _getch()) != '\r') {
+        if (ch == '\b') {
+            if (!password.empty()) {
+                password.pop_back();
+                cout << "\b \b";
+            }
+        } else {
+            password.push_back(ch);
+            cout << '*';
+        }
+    }
+#else
+    termios oldt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    termios newt = oldt;
+    newt.c_lflag &= ~ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+    while ((ch = getchar()) != '\n' && ch != '\r') {
+        if (ch == 127 || ch == 8) {
+             if (!password.empty()) {
+                password.pop_back();
+                cout << "\b \b";
+            }
+        }
+        else {
+            password.push_back(ch);
+            cout << '*';
+        }
+    }
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+#endif
+    cout << endl;
+    return password;
+}
+
 
 void registrasi() {
     cout << "\n--- Registrasi Pengguna Baru ---\n";
@@ -437,12 +846,14 @@ void registrasi() {
     cout << "Masukkan username: ";
     clearInputBuffer();
     getline(cin, username);
+
     cout << "Masukkan password: ";
-    getline(cin, password);
+    password = getMaskedPassword();
+
     UserNode* currentUser = headUser;
     while (currentUser != nullptr) {
         if (currentUser->data.username == username) {
-            cout << "Username sudah terdaftar. Silakan gunakan username lain.\n";
+            cout << "Username sudah terdaftar.\n";
             return;
         }
         currentUser = currentUser->next;
@@ -461,8 +872,10 @@ void login() {
     cout << "Username: ";
     clearInputBuffer();
     getline(cin, username);
+
     cout << "Password: ";
-    getline(cin, password);
+    password = getMaskedPassword();
+
     UserNode* currentUser = headUser;
     while (currentUser != nullptr) {
         if (currentUser->data.username == username && currentUser->data.password == password) {
@@ -486,9 +899,19 @@ Project* cariProyekById(int id) {
     return nullptr;
 }
 
+void bersihkanMemoriHistori(HistoryNode* head) {
+    HistoryNode* current = head;
+    while (current != nullptr) {
+        HistoryNode* untukDihapus = current;
+        current = current->next;
+        delete untukDihapus;
+    }
+}
+
 void bersihkanMemoriTugas(TaskNode* head) {
     TaskNode* currentTugas = head;
     while (currentTugas != nullptr) {
+        bersihkanMemoriHistori(currentTugas->data.headHistory);
         TaskNode* tugasUntukDihapus = currentTugas;
         currentTugas = currentTugas->next;
         delete tugasUntukDihapus;
@@ -521,63 +944,88 @@ void bersihkanMemori() {
 void tampilkanMenuUtama() {
     int pilihan;
     do {
+        clearScreen();
+
         cout << "\n===== Menu Manajemen Proyek =====\n";
         bool isAdmin = (loggedInUser != nullptr && loggedInUser->username == "admin");
-        int nomorMenu = 1;
-        int assignOpt = 0;
+
         if (isAdmin) {
-            cout << nomorMenu++ << ". Tambah Proyek Baru\n";
-            cout << nomorMenu++ << ". Tambah Tugas ke Proyek\n";
-            assignOpt = nomorMenu++;
-            cout << assignOpt << ". Tugaskan Tugas ke Pengguna\n";
+            cout << "1. Tambah Proyek Baru\n";
+            cout << "2. Tambah Tugas ke Proyek\n";
+            cout << "3. Tugaskan Tugas ke Pengguna\n";
+            cout << "4. Ubah Status Tugas\n";
+            cout << "5. 📜 Lihat Histori Tugas\n";
+            cout << "6. Tampilkan Semua Proyek (by ID)\n";
+            cout << "7. Tampilkan Semua Proyek (by Name)\n";
+            cout << "8. Tampilkan Tugas dalam Proyek\n";
+            cout << "9. Buat Laporan Mingguan/Bulanan\n";
+            cout << "10. 📊 Tampilkan Laporan Matriks\n";
+            cout << "11. Logout\n";
+        } else { // Regular user menu
+            cout << "1. Ubah Status Tugas\n";
+            cout << "2. 📜 Lihat Histori Tugas\n";
+            cout << "3. Tampilkan Semua Proyek (by ID)\n";
+            cout << "4. Tampilkan Semua Proyek (by Name)\n";
+            cout << "5. Tampilkan Tugas dalam Proyek\n";
+            cout << "6. 🖨️ Cetak Pencapaian Saya ke File\n";
+            cout << "7. Logout\n";
         }
-        int ubahStatusOpt = nomorMenu++;
-        int tampilIdOpt = nomorMenu++;
-        int tampilNamaOpt = nomorMenu++;
-        int tampilTugasOpt = nomorMenu++;
-        int laporanOpt = nomorMenu++;
-        int logoutOpt = nomorMenu++;
-        cout << ubahStatusOpt << ". Ubah Status Tugas\n";
-        cout << tampilIdOpt << ". Tampilkan Semua Proyek (Berdasarkan ID)\n";
-        cout << tampilNamaOpt << ". Tampilkan Semua Proyek (Urut Nama)\n";
-        cout << tampilTugasOpt << ". Tampilkan Tugas dalam Proyek (Dengan Opsi Sorting)\n";
-        cout << laporanOpt << ". Buat Laporan Mingguan/Bulanan\n";
-        cout << logoutOpt << ". Logout\n";
         cout << "Pilihan Anda: ";
+
         cin >> pilihan;
         if (cin.fail()) {
-            cout << "Input tidak valid. Masukkan angka.\n";
+            cout << "Input tidak valid.\n";
             cin.clear(); clearInputBuffer(); pilihan = -1; continue;
         }
-        if (isAdmin && pilihan == 1) {
-            tambahProyek();
-        } else if (isAdmin && pilihan == 2) {
-            tambahTugas();
-        } else if (isAdmin && pilihan == assignOpt) {
-            assignTaskToUser();
-        } else if (pilihan == ubahStatusOpt) {
-            ubahStatusTugas();
-        } else if (pilihan == tampilIdOpt) {
-            tampilkanSemuaProyek(false);
-        } else if (pilihan == tampilNamaOpt) {
-            tampilkanSemuaProyek(true);
-        } else if (pilihan == tampilTugasOpt) {
-            tampilkanTugasDalamProyek();
-        } else if (pilihan == laporanOpt) {
-            generateReport();
-        } else if (pilihan == logoutOpt) {
-            loggedInUser = nullptr;
-            cout << "\nAnda telah logout.\n";
-            break;
-        } else {
-            cout << "Pilihan tidak valid. Silakan coba lagi.\n";
+
+        if (isAdmin) {
+            switch(pilihan) {
+                case 1: tambahProyek(); break;
+                case 2: tambahTugas(); break;
+                case 3: assignTaskToUser(); break;
+                case 4: ubahStatusTugas(); break;
+                case 5: menuLihatHistori(); break;
+                case 6: tampilkanSemuaProyek(false); break;
+                case 7: tampilkanSemuaProyek(true); break;
+                case 8: tampilkanTugasDalamProyek(); break;
+                case 9: generateReport(); break;
+                case 10: tampilkanMatriksStatusProyek(); break;
+                case 11:
+                    loggedInUser = nullptr;
+                    cout << "\nAnda telah logout.\n";
+                    break;
+                default: cout << "Pilihan tidak valid.\n";
+            }
+        } else { // Regular user
+             switch(pilihan) {
+                case 1: ubahStatusTugas(); break;
+                case 2: menuLihatHistori(); break;
+                case 3: tampilkanSemuaProyek(false); break;
+                case 4: tampilkanSemuaProyek(true); break;
+                case 5: tampilkanTugasDalamProyek(); break;
+                case 6: printUserAchievements(); break;
+                case 7:
+                    loggedInUser = nullptr;
+                    cout << "\nAnda telah logout.\n";
+                    break;
+                default: cout << "Pilihan tidak valid.\n";
+            }
         }
+
+        if (loggedInUser != nullptr) {
+            cout << "\nTekan Enter untuk kembali ke menu...";
+            clearInputBuffer();
+            cin.get();
+        }
+
     } while (loggedInUser != nullptr);
 }
 
 void tampilkanMainMenu() {
     int pilihan;
     do {
+        clearScreen();
+
         cout << "\n===== Selamat Datang di Sistem Manajemen Proyek =====\n";
         cout << "1. Login\n";
         cout << "2. Registrasi\n";
@@ -585,19 +1033,28 @@ void tampilkanMainMenu() {
         cout << "Pilihan Anda: ";
         cin >> pilihan;
         if (cin.fail()) {
-            cout << "Input tidak valid. Masukkan angka.\n";
+            cout << "Input tidak valid.\n";
             cin.clear(); clearInputBuffer(); pilihan = -1; continue;
         }
         switch (pilihan) {
             case 1:
                 login();
                 if (loggedInUser != nullptr) {
+                    cout << "\nTekan Enter untuk melanjutkan...";
+                    cin.get();
                     tampilkanMenuUtama();
                 }
                 break;
             case 2: registrasi(); break;
             case 0: break;
-            default: cout << "Pilihan tidak valid. Silakan coba lagi.\n";
+            default: cout << "Pilihan tidak valid.\n";
         }
+
+        if (pilihan != 0 && loggedInUser == nullptr) {
+             cout << "\nTekan Enter untuk melanjutkan...";
+             if(cin.peek() == '\n') cin.ignore();
+             cin.get();
+        }
+
     } while (pilihan != 0);
 }

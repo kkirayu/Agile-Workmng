@@ -3,10 +3,11 @@
 
 #include <string>
 #include <vector>
+#include <ctime>
+#include <fstream>
 
 using namespace std;
 
-// Enum untuk status tugas
 enum class Status {
     NEW,
     READY,
@@ -16,33 +17,47 @@ enum class Status {
     NEED_INFO
 };
 
-// Struct untuk menyimpan tanggal
 struct Date {
     int day;
     int month;
     int year;
 };
 
-// Struct untuk tugas
+struct HistoryEntry {
+    string releaseVersion;
+    string changeDescription;
+    string changedBy;
+    time_t timestamp;
+};
+
+struct HistoryNode {
+    HistoryEntry data;
+    HistoryNode* next;
+};
+
 struct Task {
     string namaTugas;
     Status statusTugas;
     int idTugas;
     Date creationDate;
-    Date closedDate; // Hanya diisi saat statusnya CLOSED
-    string assignedUsername; // Menyimpan info siapa yang ditugaskan
+    Date closedDate;
+    string assignedUsername;
+    HistoryNode* headHistory = nullptr;
 };
 
-// Node untuk linked list Tugas
 struct TaskNode {
     Task data;
     TaskNode* next;
 };
 
-// Struct untuk proyek
 struct Project {
     string namaProyek;
     int idProyek;
+    string deskripsi;
+    string company;
+    string uid;
+    string projectManager;
+    string version;
     int nextTaskId = 1;
     TaskNode* headTugas = nullptr;
 };
@@ -65,7 +80,7 @@ struct UserNode {
     UserNode* next;
 };
 
-// ================== Deklarasi Variabel Global ==================
+// Deklarasi Variabel Global
 extern ProjectNode* headProyek;
 extern UserNode* headUser;
 extern User* loggedInUser;
